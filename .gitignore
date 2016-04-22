@@ -1,0 +1,5 @@
+*.o
+dump_ssim
+dump_fastssim
+dump_psnr
+dump_psnrhvs
