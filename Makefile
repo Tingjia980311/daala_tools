@@ -47,15 +47,15 @@ dump_psnrhvs_SOURCES := src/dump_psnrhvs.c src/vidinput.c src/y4m_input.c src/dc
 png2y4m_SOURCES := src/kiss99.c src/png2y4m.c
 y4m2png_SOURCES := src/vidinput.c src/y4m_input.c src/y4m2png.c
 
-png2y4m_LDLIBS := -lpng
-y4m2png_LDLIBS := -lpng
+png2y4m_LDLIBS := -lpng -lz
+y4m2png_LDLIBS := -lpng -lz
 
 # the following variable is used below to generate build rules
 # for each of the executables in the TARGETS variable.
 define GEN_TARGET_RULE
 $(1): $$($(1)_SOURCES:c=o)
 	@echo -n "Building $$@... "
-	$(QPFX)$$(CC) $$(CPPFLAGS) $$(CFLAGS) $$(LDFLAGS) -o $$@ $$^ $$(LDLIBS) $$($(1)_LDLIBS)
+	$(QPFX)$$(CC) $$(CPPFLAGS) $$(CFLAGS) $$(LDFLAGS) -o $$@ $$^ $$($(1)_LDLIBS) $$(LDLIBS)
 	$(QPFX)$$(STRIP) $$@
 	@echo "Done."
 endef
