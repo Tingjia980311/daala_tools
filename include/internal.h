@@ -106,12 +106,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.*/
 # define OD_DEBLOCKING (0)
 # define OD_DISABLE_CFL (0)
 # define OD_CLOSED_GOP (0)
-/*Constants for frame QP modulation.*/
-# define OD_MQP_P (1.05)
-# define OD_MQP_B (1.1)
-# define OD_DQP_I (-2)
-# define OD_DQP_P (0)
-# define OD_DQP_B (1)
 
 # define OD_MAX_REORDER (16)
 
@@ -134,7 +128,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.*/
   For example, an OD_QUALITY_SHIFT of (4) specifies the quality parameter is
    in Q4 format.*/
 # define OD_QUALITY_SHIFT (4)
-# define OD_LOSSLESS(_ctx, _pli) (_ctx->state.quantizer[_pli] == 0)
+# define OD_LOSSLESS(_ctx) ((_ctx)->state.quantizer == 0)
 # define OD_PLANE_SZ(_dim, _dec) (((_dim) + (1 << (_dec)) - 1) >> (_dec))
 
 # if defined(OD_ENABLE_ASSERTIONS)
@@ -229,13 +223,12 @@ ptrdiff_t oggbyte_bytes_left(oggbyte_buffer *_b);
 int od_ilog(uint32_t _v);
 void **od_malloc_2d(size_t _height, size_t _width, size_t _sz);
 void **od_calloc_2d(size_t _height, size_t _width, size_t _sz);
+void od_zero_2d(void **buf, size_t height, size_t width, size_t sz);
 void od_free_2d(void *_ptr);
 
 # define OD_DIVU_DMAX (1024)
 
 extern uint32_t OD_DIVU_SMALL_CONSTS[OD_DIVU_DMAX][2];
-
-uint32_t daala_version_number(void);
 
 /*Translate unsigned division by small divisors into multiplications.*/
 # define OD_DIVU_SMALL(_x, _d) \

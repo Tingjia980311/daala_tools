@@ -14,7 +14,7 @@ QUIET ?= 1
 
 # C compiler flags
 CC := gcc
-CFLAGS := -m64 -pedantic -pedantic-errors -std=gnu99 -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes
+CFLAGS := -m64 -pedantic -pedantic-errors -std=gnu99 -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wformat=2 -Wstrict-prototypes -Wno-missing-prototypes -Wno-format-nonliteral
 CFLAGS += -I./include
 LDLIBS := -lm
 
@@ -39,18 +39,23 @@ QPFX :=
 endif
 
 # build targets
-TARGETS := dump_ssim dump_fastssim dump_psnr dump_psnrhvs
+TARGETS := dump_ssim dump_fastssim dump_psnr dump_psnrhvs png2y4m y4m2png
 dump_ssim_SOURCES := src/dump_ssim.c src/vidinput.c src/y4m_input.c
 dump_fastssim_SOURCES := src/dump_fastssim.c src/vidinput.c src/y4m_input.c
 dump_psnr_SOURCES := src/dump_psnr.c src/vidinput.c src/y4m_input.c
 dump_psnrhvs_SOURCES := src/dump_psnrhvs.c src/vidinput.c src/y4m_input.c src/dct.c src/internal.c
+png2y4m_SOURCES := src/kiss99.c src/png2y4m.c
+y4m2png_SOURCES := src/vidinput.c src/y4m_input.c src/y4m2png.c
+
+png2y4m_LDLIBS := -lpng
+y4m2png_LDLIBS := -lpng
 
 # the following variable is used below to generate build rules
 # for each of the executables in the TARGETS variable.
 define GEN_TARGET_RULE
 $(1): $$($(1)_SOURCES:c=o)
 	@echo -n "Building $$@... "
-	$(QPFX)$$(CC) $$(CPPFLAGS) $$(CFLAGS) $$(LDFLAGS) -o $$@ $$^ $$(LDLIBS)
+	$(QPFX)$$(CC) $$(CPPFLAGS) $$(CFLAGS) $$(LDFLAGS) -o $$@ $$^ $$(LDLIBS) $$($(1)_LDLIBS)
 	$(QPFX)$$(STRIP) $$@
 	@echo "Done."
 endef

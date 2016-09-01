@@ -54,6 +54,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.*/
 #  define M_LOG2E (1.4426950408889634073599246810019)
 # endif
 
+# if !defined(M_LN2)
+#  define M_LN2 (0.69314718055994530941723212145818)
+# endif
+
 /*Some specific platforms may have optimized intrinsic or inline assembly
    versions of these functions which can substantially improve performance.
   We define macros for them to allow easy incorporation of these non-ANSI
@@ -147,6 +151,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.*/
 #if defined(OD_FLOAT_PVQ)
 typedef double od_val16;
 typedef double od_val32;
+# define OD_QCONST32(x, bits) (x)
 # define OD_ROUND16(x) (x)
 # define OD_ROUND32(x) (x)
 # define OD_SHL(x, shift) (x)
@@ -158,6 +163,8 @@ typedef double od_val32;
 #else
 typedef int16_t od_val16;
 typedef int32_t od_val32;
+/** Compile-time conversion of float constant to 32-bit value */
+# define OD_QCONST32(x, bits) ((od_val32)(.5 + (x)*(((od_val32)1) << (bits))))
 # define OD_ROUND16(x) (int16_t)(floor(.5 + (x)))
 # define OD_ROUND32(x) (int32_t)(floor(.5 + (x)))
 /*Shift x left by shift*/
@@ -171,13 +178,11 @@ typedef int32_t od_val32;
 /*Shift x right by shift (without rounding) or left by -shift if shift
   is negative.*/
 # define OD_VSHR(x, shift) \
-  ((shift) > 0 ? (int32_t)((x) >> (shift)) \
-  : (int32_t)((x) << -(shift)))
+  (((shift) > 0) ? OD_SHR(x, shift) : OD_SHL(x, -(shift)))
 /*Shift x right by shift (with rounding) or left by -shift if shift
   is negative.*/
 # define OD_VSHR_ROUND(x, shift) \
-  ((shift) > 0 ? (int32_t)(((x) + (1 << (shift) >> 1)) >> (shift)) \
-  : (int32_t)((x) << -(shift)))
+  (((shift) > 0) ? OD_SHR_ROUND(x, shift) : OD_SHL(x, -(shift)))
 # define OD_ABS(x) (abs(x))
 /* (od_val32)(od_val16) gives TI compiler a hint that it's 16x16->32 multiply */
 /** 16x16 multiplication where the result fits in 32 bits */
@@ -198,7 +203,10 @@ typedef int32_t od_val32;
   All other code should use OD_ILOG() instead.*/
 # if defined(_MSC_VER)
 #  include <intrin.h>
-#  if !defined(snprintf)
+/*Visual Studio 2015 (version "14" and _MSC_VER == 1900) finally provides
+   proper support for snprintf() in stdio.h.
+  Only #define snprintf with versions earlier than VS2015.*/
+#  if _MSC_VER < 1900 && !defined(snprintf)
 #   define snprintf _snprintf
 #  endif
 /*In _DEBUG mode this is not an intrinsic by default.*/
@@ -237,6 +245,7 @@ static __inline int od_bsr(unsigned long x) {
 # endif
 
 # define OD_LOG2(x) (M_LOG2E*log(x))
+# define OD_EXP2(x) (exp(M_LN2*(x)))
 
 /*Swaps two integers a and b if a > b.*/
 /*#define OD_SORT2I(a, b) \

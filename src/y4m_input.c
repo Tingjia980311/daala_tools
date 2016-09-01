@@ -607,7 +607,15 @@ static int y4m_input_open_impl(y4m_input *_y4m,FILE *_fin){
   else if(strcmp(_y4m->chroma_type,"420p10")==0){
     _y4m->src_c_dec_h=_y4m->dst_c_dec_h=_y4m->src_c_dec_v=_y4m->dst_c_dec_v=2;
     _y4m->dst_buf_read_sz=(_y4m->pic_w*_y4m->pic_h
-			   +2*((_y4m->pic_w+1)/2)*((_y4m->pic_h+1)/2))*2;
+                           +2*((_y4m->pic_w+1)/2)*((_y4m->pic_h+1)/2))*2;
+    _y4m->depth=10;
+    /*Natively supported: no conversion required.*/
+    _y4m->aux_buf_sz=_y4m->aux_buf_read_sz=0;
+    _y4m->convert=y4m_convert_null;
+  }
+  else if(strcmp(_y4m->chroma_type,"444p10")==0){
+    _y4m->src_c_dec_h=_y4m->dst_c_dec_h=_y4m->src_c_dec_v=_y4m->dst_c_dec_v=1;
+    _y4m->dst_buf_read_sz=_y4m->pic_w*_y4m->pic_h*3*2;
     _y4m->depth=10;
     /*Natively supported: no conversion required.*/
     _y4m->aux_buf_sz=_y4m->aux_buf_read_sz=0;
@@ -777,12 +785,12 @@ static int y4m_input_fetch_frame(y4m_input *_y4m,FILE *_fin,
   _ycbcr[0].width=_y4m->frame_w;
   _ycbcr[0].height=_y4m->frame_h;
   _ycbcr[0].stride=_y4m->pic_w*xstride;
-  _ycbcr[0].data=_y4m->dst_buf-_y4m->pic_x-_y4m->pic_y*_y4m->pic_w;
+  _ycbcr[0].data=_y4m->dst_buf-(_y4m->pic_x+_y4m->pic_y*_y4m->pic_w)*xstride;
   _ycbcr[1].width=frame_c_w;
   _ycbcr[1].height=frame_c_h;
   _ycbcr[1].stride=c_w*xstride;
-  _ycbcr[1].data=_y4m->dst_buf+pic_sz-(_y4m->pic_x/_y4m->dst_c_dec_h)-
-   (_y4m->pic_y/_y4m->dst_c_dec_v)*c_w;
+  _ycbcr[1].data=_y4m->dst_buf+pic_sz-((_y4m->pic_x/_y4m->dst_c_dec_h)+
+   (_y4m->pic_y/_y4m->dst_c_dec_v)*c_w)*xstride;
   _ycbcr[2].width=frame_c_w;
   _ycbcr[2].height=frame_c_h;
   _ycbcr[2].stride=c_w*xstride;
