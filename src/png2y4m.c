@@ -86,10 +86,12 @@ static int aspect_numerator=0;
 static int aspect_denominator=0;
 static int pixel_format=PIXEL_FMT_420;
 static int dither = 1;
+static int delete_after = 0;
+static int incremental = 0;
 
 static char *input_filter;
 
-const char *OPTSTRING="ho:s:S:f:F:";
+const char *OPTSTRING="ho:s:S:f:F:di";
 struct option OPTIONS[]={
   {"help",no_argument,NULL,'h'},
   {"output",required_argument,NULL,'o'},
@@ -126,7 +128,9 @@ static void usage(const char *_argv0){
    "                                  second when divided by the framerate\n"
    "                                  denominator.\n"
    "  -F --framerate-denominator <n>  Frame rate denominator (default 1).\n"
-   "  --no-dither                     Do not dither (default is to dither).\n",
+   "  --no-dither                     Do not dither (default is to dither).\n"
+   "  -d                              Delete PNG immediately after encoding.\n"
+   "  -i                              Incremental mode (append to existing output file)\n",
    _argv0);
 }
 
@@ -597,6 +601,9 @@ static FILE *open_png_file(const char *_input_directory,const char *_name){
   if(fin==NULL){
     fprintf(stderr,"Error opening \"%s\": %s\n",input_filename,strerror(errno));
   }
+  if(delete_after){
+    unlink(input_filename);
+  }
   return fin;
 }
 
@@ -633,6 +640,8 @@ int main(int _argc,char **_argv){
         output_filename=optarg;
         break;
       }
+      case 'd':delete_after=1;break;
+      case 'i':incremental=1;break;
       case 's':aspect_numerator=atol(optarg);break;
       case 'S':aspect_denominator=atol(optarg);break;
       case 'f':fps_numerator=atol(optarg);break;
@@ -684,7 +693,13 @@ int main(int _argc,char **_argv){
     fprintf(stderr,"No output file specified. Run with -h for help.\n");
     return EXIT_FAILURE;
   }
-  fout=strcmp(output_filename,"-")==0?stdout:fopen(output_filename,"wb");
+  if(strcmp(output_filename,"-")==0){
+    fout=stdout;
+  } else if (incremental) {
+    fout=fopen(output_filename,"ab");
+  } else {
+    fout=fopen(output_filename,"wb");
+  }
   if(fout==NULL){
     fprintf(stderr,"Error opening output file \"%s\".\n",output_filename);
     return 1;
@@ -693,10 +708,12 @@ int main(int _argc,char **_argv){
   if(fin!=stdin)fclose(fin);
   fprintf(stderr,"%d frames, %dx%d\n",
    OD_MAXI(npng_files,1),ycbcr[0].width,ycbcr[0].height);
-  /*Write the Y4M header.*/
-  fprintf(fout,"YUV4MPEG2 W%i H%i F%i:%i Ip A%i:%i%s\n",
-   ycbcr[0].width,ycbcr[0].height,fps_numerator,fps_denominator,
-   aspect_numerator,aspect_denominator,CHROMA_TAGS[pixel_format]);
+  /*Write the Y4M header if we're not in incremental mode or if the file didn't exist.*/
+  if (!incremental || ftell(fout) == 0) {
+    fprintf(fout,"YUV4MPEG2 W%i H%i F%i:%i Ip A%i:%i%s\n",
+     ycbcr[0].width,ycbcr[0].height,fps_numerator,fps_denominator,
+     aspect_numerator,aspect_denominator,CHROMA_TAGS[pixel_format]);
+  }
   i=0;
   do{
     int pli;
