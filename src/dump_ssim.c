@@ -374,10 +374,14 @@ int main(int _argc,char *_argv[]){
 
         // get the result from the child
         double res[3];
-        read(pipes[child_num], res, 3*sizeof(double));
-        close(pipes[child_num]);
-        for (unsigned plane_idx = 0; plane_idx < 3; plane_idx++) {
-          gssim[plane_idx]+=res[plane_idx];
+        if (read(pipes[child_num], res, 3*sizeof(double)) < 0) {
+          perror("Reading from child failed");
+          exit(1);
+        } else {
+          close(pipes[child_num]);
+          for (unsigned plane_idx = 0; plane_idx < 3; plane_idx++) {
+            gssim[plane_idx]+=res[plane_idx];
+          }
         }
 
         // if we're finishing, count down and quit
@@ -486,7 +490,9 @@ int main(int _argc,char *_argv[]){
 
       if (npar != 0) {
         // we're a child
-        write(pnums[1], ssim, 3 * sizeof(double));
+        if (write(pnums[1], ssim, 3 * sizeof(double)) < 0) {
+          perror("Child write failed");
+        }
       }
 
       if(!summary_only){
