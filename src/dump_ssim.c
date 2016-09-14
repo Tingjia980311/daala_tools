@@ -21,13 +21,14 @@
 #endif
 #include "getopt.h"
 
-const char *optstring = "frsyp:";
+const char *optstring = "frsyp:l:";
 const struct option options[]={
   {"frame-type",no_argument,NULL,'f'},
   {"raw",no_argument,NULL,'r'},
   {"summary",no_argument,NULL,'s'},
   {"luma-only",no_argument,NULL,'y'},
   {"parallel",required_argument,NULL,'p'},
+  {"limit",required_argument,NULL,'l'},
   {NULL,0,NULL,0}
 };
 
@@ -205,7 +206,8 @@ static void usage(char *_argv[]){
       "      -r --raw        Show raw SSIM scores, instead of 10*log10(1/(1-ssim)).\n"
       "      -s --summary                  Only output the summary line.\n"
       "      -y --luma-only                Only output values for the luma channel.\n"
-      "      -p <npar>, --parallel=<npar>  Run <npar> parallel workers.\n",_argv[0]);
+      "      -p <npar>, --parallel=<npar>  Run <npar> parallel workers.\n"
+      "      -l <lim>, --limit=<lim>       Stop after <lim> frames.\n",_argv[0]);
 }
 
 typedef double (*convert_ssim_func)(double _ssim,double _weight);
@@ -233,6 +235,7 @@ int main(int _argc,char *_argv[]){
   int                c;
   int                xstride;
   int                npar = 0;
+  int                nframes = 0;
 #ifdef _WIN32
   /*We need to set stdin/stdout to binary mode on windows.
     Beware the evil ifdef.
@@ -249,6 +252,7 @@ int main(int _argc,char *_argv[]){
       case 's':summary_only=1;break;
       case 'y':luma_only=1;break;
       case 'p':npar=atoi(optarg);break;
+      case 'l':nframes=atoi(optarg);break;
       default:{
                 usage(_argv);
                 exit(EXIT_FAILURE);
@@ -402,21 +406,25 @@ int main(int _argc,char *_argv[]){
     int             nplanes;
 
     if (!finishing) {
-      ret1=video_input_fetch_frame(&vid1,f1,tag1);
-      ret2=video_input_fetch_frame(&vid2,f2,tag2);
-
       bool have_error = false;
-      if ( (ret1==0&&ret2==0) || (ret1<0||ret2<0) ) {
+      if (nframes > 0 && frameno == nframes) {
         have_error = true;
-      } else if(ret1==0){
-        fprintf(stderr,"%s ended before %s.\n",
-            _argv[optind],_argv[optind+1]);
-        have_error = true;
-      }
-      else if(ret2==0){
-        fprintf(stderr,"%s ended before %s.\n",
-            _argv[optind+1],_argv[optind]);
-        have_error = true;
+      } else {
+        ret1=video_input_fetch_frame(&vid1,f1,tag1);
+        ret2=video_input_fetch_frame(&vid2,f2,tag2);
+
+        if ( (ret1==0&&ret2==0) || (ret1<0||ret2<0) ) {
+          have_error = true;
+        } else if(ret1==0){
+          fprintf(stderr,"%s ended before %s.\n",
+              _argv[optind],_argv[optind+1]);
+          have_error = true;
+        }
+        else if(ret2==0){
+          fprintf(stderr,"%s ended before %s.\n",
+              _argv[optind+1],_argv[optind]);
+          have_error = true;
+        }
       }
 
       if (have_error) {
