@@ -405,26 +405,21 @@ int main(int _argc,char *_argv[]){
       ret1=video_input_fetch_frame(&vid1,f1,tag1);
       ret2=video_input_fetch_frame(&vid2,f2,tag2);
 
+      bool have_error = false;
       if ( (ret1==0&&ret2==0) || (ret1<0||ret2<0) ) {
-        if (npar != 0) {
-          finishing = true;
-        } else {
-          break;
-        }
+        have_error = true;
       } else if(ret1==0){
         fprintf(stderr,"%s ended before %s.\n",
             _argv[optind],_argv[optind+1]);
-
-        if (npar != 0) {
-          finishing = true;
-        } else {
-          break;
-        }
+        have_error = true;
       }
       else if(ret2==0){
         fprintf(stderr,"%s ended before %s.\n",
             _argv[optind+1],_argv[optind]);
+        have_error = true;
+      }
 
+      if (have_error) {
         if (npar != 0) {
           finishing = true;
         } else {
@@ -449,7 +444,6 @@ int main(int _argc,char *_argv[]){
 
     // fork if we're the parent
     if (npar != 0 && (cpids[child_num] = fork())) {
-      frameno++;
       close(pnums[1]);
     } else {
       // Child: compute SSIM for one frame, send it via pipe to parent, and die
@@ -499,10 +493,9 @@ int main(int _argc,char *_argv[]){
 
       if (npar != 0) {
         exit(0);
-      } else {
-        frameno++;
       }
     }
+    frameno++;
   }
 
   if (cpids != NULL) {
