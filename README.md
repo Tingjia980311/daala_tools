@@ -7,8 +7,10 @@ At the moment, the following tools are split out:
 
 - `dump_psnrhvs`
 - `dump_psnr`
-- `dump_ssim`
+- `dump_ssim`&#151;added `-p` switch for per-frame parallelism
 - `dump_fastssim`
+- `png2y4m`&#151;added `-d` and `-i` switches
+- `y4m2png`
 
 The above tools are forked from commit 3edf8db of the Daala repo, with very
 minor modifications
