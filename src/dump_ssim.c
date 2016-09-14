@@ -1,11 +1,19 @@
+/* -*-mode:c++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 #include "vidinput.h"
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
 #if !defined(M_PI)
 # define M_PI (3.141592653589793238462643)
 #endif
 #include <string.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <errno.h>
 /*Yes, yes, we're going to hell.*/
 #if defined(_WIN32)
 #include <io.h>
@@ -13,12 +21,13 @@
 #endif
 #include "getopt.h"
 
-const char *optstring = "frsy";
+const char *optstring = "frsyp:";
 const struct option options[]={
   {"frame-type",no_argument,NULL,'f'},
   {"raw",no_argument,NULL,'r'},
   {"summary",no_argument,NULL,'s'},
   {"luma-only",no_argument,NULL,'y'},
+  {"parallel",required_argument,NULL,'p'},
   {NULL,0,NULL,0}
 };
 
@@ -43,7 +52,7 @@ static int gaussian_filter_init(unsigned **_kernel,double _sigma,int _max_len){
   scale=1/(sqrt(2*M_PI)*_sigma);
   nhisigma2=-0.5/(_sigma*_sigma);
   /*Compute the kernel size so that the error in the first truncated
-     coefficient is no larger than 0.5*KERNEL_WEIGHT.
+    coefficient is no larger than 0.5*KERNEL_WEIGHT.
     There is no point in going beyond this given our working precision.*/
   s=sqrt(0.5*M_PI)*_sigma*(1.0/KERNEL_WEIGHT);
   if(s>=1)len=0;
@@ -54,7 +63,7 @@ static int gaussian_filter_init(unsigned **_kernel,double _sigma,int _max_len){
   sum=0;
   for(ci=kernel_len;ci>0;ci--){
     kernel[kernel_len-ci]=kernel[kernel_len+ci]=
-     (unsigned)(KERNEL_WEIGHT*scale*exp(nhisigma2*ci*ci)+0.5);
+      (unsigned)(KERNEL_WEIGHT*scale*exp(nhisigma2*ci*ci)+0.5);
     sum+=kernel[kernel_len-ci];
   }
   kernel[kernel_len]=KERNEL_WEIGHT-(sum<<1);
@@ -77,7 +86,7 @@ struct ssim_moments{
 #define SSIM_K2 (0.03*0.03)
 
 static double calc_ssim(const unsigned char *_src,int _systride,
- const unsigned char *_dst,int _dystride,double _par,int depth,int _w,int _h){
+    const unsigned char *_dst,int _dystride,double _par,int depth,int _w,int _h){
   ssim_moments  *line_buf;
   ssim_moments **lines;
   double         ssim;
@@ -103,7 +112,7 @@ static double calc_ssim(const unsigned char *_src,int _systride,
   lines[0]=line_buf=(ssim_moments *)malloc(line_sz*_w*sizeof(*line_buf));
   for(y=1;y<line_sz;y++)lines[y]=lines[y-1]+_w;
   hkernel_sz=gaussian_filter_init(&hkernel,_h*(1.5/256)/_par,
-   _w<_h?_w:_h);
+      _w<_h?_w:_h);
   hkernel_offs=hkernel_sz>>1;
   ssim=0;
   ssimw=0;
@@ -119,16 +128,16 @@ static double calc_ssim(const unsigned char *_src,int _systride,
         memset(&m,0,sizeof(m));
         k_min=hkernel_offs-x<=0?0:hkernel_offs-x;
         k_max=x+hkernel_offs-_w+1<=0?
-         hkernel_sz:hkernel_sz-(x+hkernel_offs-_w+1);
+          hkernel_sz:hkernel_sz-(x+hkernel_offs-_w+1);
         for(k=k_min;k<k_max;k++){
           signed s;
           signed d;
           signed window;
           if (depth > 8) {
             s = _src[(x-hkernel_offs+k)*2] +
-             (_src[(x-hkernel_offs+k)*2 + 1] << 8);
+              (_src[(x-hkernel_offs+k)*2 + 1] << 8);
             d = _dst[(x-hkernel_offs+k)*2] +
-             (_dst[(x-hkernel_offs+k)*2 + 1] << 8);
+              (_dst[(x-hkernel_offs+k)*2 + 1] << 8);
           } else {
             s=_src[(x-hkernel_offs+k)];
             d=_dst[(x-hkernel_offs+k)];
@@ -176,7 +185,7 @@ static double calc_ssim(const unsigned char *_src,int _systride,
         mxy=m.mux*(double)m.muy;
         my2=m.muy*(double)m.muy;
         ssim+=m.w*(2*mxy+c1)*(c2+2*(m.xy*w-mxy))/
-         ((mx2+my2+c1)*(m.x2*w-mx2+m.y2*w-my2+c2));
+          ((mx2+my2+c1)*(m.x2*w-mx2+m.y2*w-my2+c2));
         ssimw+=m.w;
       }
     }
@@ -190,13 +199,13 @@ static double calc_ssim(const unsigned char *_src,int _systride,
 
 static void usage(char *_argv[]){
   fprintf(stderr,"Usage: %s [options] <video1> <video2>\n"
-   "    <video1> and <video2> must be YUV4MPEG files.\n\n"
-   "    Options:\n\n"
-   "      -f --frame-type Show frame type and QI value for each Theora frame.\n"
-   "      -r --raw        Show raw SSIM scores, instead of"
-   " 10*log10(1/(1-ssim)).\n"
-   "      -s --summary    Only output the summary line.\n"
-   "      -y --luma-only  Only output values for the luma channel.\n",_argv[0]);
+      "    <video1> and <video2> must be YUV4MPEG files.\n\n"
+      "    Options:\n\n"
+      "      -f --frame-type Show frame type and QI value for each Theora frame.\n"
+      "      -r --raw        Show raw SSIM scores, instead of 10*log10(1/(1-ssim)).\n"
+      "      -s --summary                  Only output the summary line.\n"
+      "      -y --luma-only                Only output values for the luma channel.\n"
+      "      -p <npar>, --parallel=<npar>  Run <npar> parallel workers.\n",_argv[0]);
 }
 
 typedef double (*convert_ssim_func)(double _ssim,double _weight);
@@ -223,6 +232,7 @@ int main(int _argc,char *_argv[]){
   int                long_option_index;
   int                c;
   int                xstride;
+  int                npar = 0;
 #ifdef _WIN32
   /*We need to set stdin/stdout to binary mode on windows.
     Beware the evil ifdef.
@@ -238,11 +248,17 @@ int main(int _argc,char *_argv[]){
       case 'r':convert=convert_ssim_raw;break;
       case 's':summary_only=1;break;
       case 'y':luma_only=1;break;
+      case 'p':npar=atoi(optarg);break;
       default:{
-        usage(_argv);
-        exit(EXIT_FAILURE);
-      }break;
+                usage(_argv);
+                exit(EXIT_FAILURE);
+              }break;
     }
+  }
+  if (npar > 0 && npar < 4) {
+    fprintf(stderr, "ERROR: 0 < npar < 4 doesn't make any sense. Refusing to proceed.\n");
+    usage(_argv);
+    exit(EXIT_FAILURE);
   }
   if(optind+2!=_argc){
     usage(_argv);
@@ -282,27 +298,99 @@ int main(int _argc,char *_argv[]){
     exit(1);
   }
   if((info1.pic_x&!(info1.pixel_fmt&1))!=(info2.pic_x&!(info2.pixel_fmt&1))||
-   (info1.pic_y&!(info1.pixel_fmt&2))!=(info2.pic_y&!(info2.pixel_fmt&2))){
+      (info1.pic_y&!(info1.pixel_fmt&2))!=(info2.pic_y&!(info2.pixel_fmt&2))){
     fprintf(stderr,"Chroma subsampling offsets do not match.\n");
     exit(EXIT_FAILURE);
   }
   if(info1.fps_n*(int64_t)info2.fps_d!=
-   info2.fps_n*(int64_t)info1.fps_d){
+      info2.fps_n*(int64_t)info1.fps_d){
     fprintf(stderr,"Warning: framerates do not match.\n");
     fprintf(stderr,"info1.fps_n=%i info1.fps_d=%i info2.fps_n=%i info2.fps_d=%i\n",info1.fps_n,info1.fps_d,info2.fps_n,info2.fps_d);
   }
   if(info1.par_n*(int64_t)info2.par_d!=
-   info2.par_n*(int64_t)info1.par_d){
+      info2.par_n*(int64_t)info1.par_d){
     fprintf(stderr,"Warning: aspect ratios do not match.\n");
   }
   xstride = info1.depth > 8 ? 2 : 1;
   par=info1.par_n>0&&info2.par_d>0?
-   info1.par_n/(double)info2.par_d:1;
+    info1.par_n/(double)info2.par_d:1;
   gssim[0]=gssim[1]=gssim[2]=0;
   /*We just use a simple weighting to get a single full-color score.
     In reality the CSF for chroma is not the same as luma.*/
   cweight=0.25*(4>>(!(info1.pixel_fmt&1)+!(info1.pixel_fmt&2)));
-  for(frameno=0;;frameno++){
+
+
+  int *cpids = (int *)calloc(npar, sizeof(cpids[0]));
+  int *pipes = (int *)calloc(npar, sizeof(pipes[0]));
+
+  if (npar != 0 && (cpids == NULL || pipes == NULL)) {
+    perror("Allocating for child pids or pipes failed.");
+    exit(1);
+  }
+  int pnums[2] = {0,};
+  int num_children = 0;
+  bool launching = true;
+  bool finishing = false;
+  frameno = 0;
+
+  while (true) {
+    int child_num = -1;
+
+    if (npar != 0) {
+      if (launching) {
+        child_num = num_children++;
+        if (num_children == npar) {
+          launching = false;
+        }
+      } else {
+        // wait for any child to finish here
+        pid_t cpid = wait(NULL);
+
+        if (cpid < 0 ) {
+          if (errno == ECHILD) {
+            break;
+          } else {
+            perror("Wait error");
+            exit(1);
+          }
+        }
+
+        // look for child pid
+        for (child_num = 0; child_num < npar; child_num++) {
+          if (cpids[child_num] == cpid) {
+            break;
+          }
+        }
+
+        // somehow didn't find the pid in our table
+        if (child_num == npar) {
+          fprintf(stderr,"Unexpected child pid death %d\n", cpid);
+          exit(1);
+        }
+
+        // get the result from the child
+        double res[3];
+        read(pipes[child_num], res, 3*sizeof(double));
+        close(pipes[child_num]);
+        for (unsigned plane_idx = 0; plane_idx < 3; plane_idx++) {
+          gssim[plane_idx]+=res[plane_idx];
+        }
+
+        // if we're finishing, count down and quit
+        if (finishing) {
+          if (--num_children == 0) {
+            // all children have returned
+            break;
+          }
+        }
+      }
+
+      if (child_num == -1) {
+        fprintf(stderr,"Somehow didn't set child_num. Giving up.\n");
+        exit(1);
+      }
+    }
+
     video_input_ycbcr f1;
     video_input_ycbcr f2;
     double          ssim[3];
@@ -312,54 +400,121 @@ int main(int _argc,char *_argv[]){
     int             ret2;
     int             pli;
     int             nplanes;
-    ret1=video_input_fetch_frame(&vid1,f1,tag1);
-    ret2=video_input_fetch_frame(&vid2,f2,tag2);
-    if(ret1==0&&ret2==0)break;
-    else if(ret1<0||ret2<0)break;
-    else if(ret1==0){
-      fprintf(stderr,"%s ended before %s.\n",
-       _argv[optind],_argv[optind+1]);
-      break;
-    }
-    else if(ret2==0){
-      fprintf(stderr,"%s ended before %s.\n",
-       _argv[optind+1],_argv[optind]);
-      break;
-    }
-    /*Okay, we got one frame from each.*/
-    nplanes = luma_only ? 1 : 3;
-    for(pli=0;pli<nplanes;pli++){
-      int xdec;
-      int ydec;
-      xdec=pli&&!(info1.pixel_fmt&1);
-      ydec=pli&&!(info1.pixel_fmt&2);
-      ssim[pli]=calc_ssim(
-       f1[pli].data + (info1.pic_y >> ydec)*f1[pli].stride +
-        (info1.pic_x*xstride >> xdec),
-       f1[pli].stride,
-       f2[pli].data + (info2.pic_y >> ydec)*f2[pli].stride +
-        (info2.pic_x*xstride >> xdec),
-       f2[pli].stride,
-       par,info1.depth,
-       ((info1.pic_x+info1.pic_w+xdec)>>xdec)-(info1.pic_x>>xdec),
-       ((info1.pic_y+info1.pic_h+ydec)>>ydec)-(info1.pic_y>>ydec));
-      gssim[pli]+=ssim[pli];
-    }
-    if(!summary_only){
-      if(show_frame_type)printf("%s%s",tag1,tag2);
-      if(!luma_only){
-        printf("%08i: %-8G  (Y': %-8G  Cb: %-8G  Cr: %-8G)\n",frameno,
-         convert(ssim[0]+cweight*(ssim[1]+ssim[2]),1+2*cweight),
-         convert(ssim[0],1),convert(ssim[1],1),convert(ssim[2],1));
+
+    if (!finishing) {
+      ret1=video_input_fetch_frame(&vid1,f1,tag1);
+      ret2=video_input_fetch_frame(&vid2,f2,tag2);
+
+      if ( (ret1==0&&ret2==0) || (ret1<0||ret2<0) ) {
+        if (npar != 0) {
+          finishing = true;
+        } else {
+          break;
+        }
+      } else if(ret1==0){
+        fprintf(stderr,"%s ended before %s.\n",
+            _argv[optind],_argv[optind+1]);
+
+        if (npar != 0) {
+          finishing = true;
+        } else {
+          break;
+        }
       }
-      else printf("%08i: %-8G\n",frameno,convert(ssim[0],1));
+      else if(ret2==0){
+        fprintf(stderr,"%s ended before %s.\n",
+            _argv[optind+1],_argv[optind]);
+
+        if (npar != 0) {
+          finishing = true;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // if we're finishing, never launch another child (but go around again to wait for the rest of the kids to die)
+    if (finishing) {
+      continue;
+    }
+
+    // in the parallel case we're about to spawn a child
+    if (npar != 0) {
+      if (pipe(pnums) < 0) {
+        perror("Failed to open child pipe");
+        exit(1);
+      }
+      pipes[child_num] = pnums[0];
+    }
+
+    // fork if we're the parent
+    if (npar != 0 && (cpids[child_num] = fork())) {
+      frameno++;
+    } else {
+      // Child: compute SSIM for one frame, send it via pipe to parent, and die
+      // we don't need access to the filehandles any more
+      if (npar != 0) {
+        fclose(vid1.fin);
+        fclose(vid2.fin);
+      }
+
+      nplanes = luma_only ? 1 : 3;
+      for(pli=0;pli<nplanes;pli++){
+        int xdec;
+        int ydec;
+        xdec=pli&&!(info1.pixel_fmt&1);
+        ydec=pli&&!(info1.pixel_fmt&2);
+        ssim[pli]=calc_ssim(
+            f1[pli].data + (info1.pic_y >> ydec)*f1[pli].stride +
+            (info1.pic_x*xstride >> xdec),
+            f1[pli].stride,
+            f2[pli].data + (info2.pic_y >> ydec)*f2[pli].stride +
+            (info2.pic_x*xstride >> xdec),
+            f2[pli].stride,
+            par,info1.depth,
+            ((info1.pic_x+info1.pic_w+xdec)>>xdec)-(info1.pic_x>>xdec),
+            ((info1.pic_y+info1.pic_h+ydec)>>ydec)-(info1.pic_y>>ydec));
+
+        if (npar == 0) {
+          gssim[pli]+=ssim[pli];
+        }
+      }
+
+      if (npar != 0) {
+        // we're a child
+        write(pnums[1], ssim, 3 * sizeof(double));
+      }
+
+      if(!summary_only){
+        if(show_frame_type)printf("%s%s",tag1,tag2);
+        if(!luma_only){
+          printf("%08i: %-8G  (Y': %-8G  Cb: %-8G  Cr: %-8G)\n",frameno,
+              convert(ssim[0]+cweight*(ssim[1]+ssim[2]),1+2*cweight),
+              convert(ssim[0],1),convert(ssim[1],1),convert(ssim[2],1));
+        }
+        else printf("%08i: %-8G\n",frameno,convert(ssim[0],1));
+      }
+
+      if (npar != 0) {
+        exit(0);
+      } else {
+        frameno++;
+      }
     }
   }
+
+  if (cpids != NULL) {
+    free(cpids);
+  }
+  if (pipes != NULL) {
+    free(pipes);
+  }
+
   if(!luma_only){
     printf("Total: %-8G  (Y': %-8G  Cb: %-8G  Cr: %-8G)\n",
-     convert(gssim[0]+cweight*(gssim[1]+gssim[2]),(1+2*cweight)*frameno),
-     convert(gssim[0],frameno),convert(gssim[1],frameno),
-     convert(gssim[2],frameno));
+        convert(gssim[0]+cweight*(gssim[1]+gssim[2]),(1+2*cweight)*frameno),
+        convert(gssim[0],frameno),convert(gssim[1],frameno),
+        convert(gssim[2],frameno));
   }
   else printf("Total: %-8G\n",convert(gssim[0],frameno));
   video_input_close(&vid1);
