@@ -450,12 +450,14 @@ int main(int _argc,char *_argv[]){
     // fork if we're the parent
     if (npar != 0 && (cpids[child_num] = fork())) {
       frameno++;
+      close(pnums[1]);
     } else {
       // Child: compute SSIM for one frame, send it via pipe to parent, and die
       // we don't need access to the filehandles any more
       if (npar != 0) {
         fclose(vid1.fin);
         fclose(vid2.fin);
+        close(pnums[0]);
       }
 
       nplanes = luma_only ? 1 : 3;
