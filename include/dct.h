@@ -110,7 +110,7 @@ void od_bin_fdct8(od_coeff y[8], const od_coeff *x, int xstride);
            This may be the same as the source.
   xstride: The stride of the destination.
   y:       The source vector (of size 8).*/
-void od_bin_idct8(od_coeff x[8], int xstride, const od_coeff *y);
+void od_bin_idct8(od_coeff *x, int xstride, const od_coeff y[16]);
 
 void od_bin_fdct8x8(od_coeff *y, int ystride, const od_coeff *x, int xstride);
 void od_bin_idct8x8(od_coeff *x, int xstride, const od_coeff *y, int ystride);
